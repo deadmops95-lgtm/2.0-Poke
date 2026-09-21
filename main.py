@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import aiosqlite
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -11,18 +12,19 @@ import asyncio
 
 TOKEN = "8628464354:AAEQ0XKfv9OR-CR368dSaXq6tQsipn_Wy7w"
 
-# Получаем домен от Bothost. Если переменная пустая, берем имя из самого хостинга или дефолтный шаблон
 raw_domain = os.getenv("BOTHOUSE_DOMAIN", "")
 if not raw_domain or "localhost" in raw_domain:
-    # Если Bothost не передал домен, соберём его на базе ID бота, чтобы точно была ссылка https
-    DOMAIN = "bot8628464354.bothost.tech" # Либо Bothost подставит правильный при следующем перезапуске
+    DOMAIN = "bot8628464354.bothost.tech"
 else:
     DOMAIN = raw_domain.replace("http://", "").replace("https://", "")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 app = FastAPI()
-templates = Jinja2Templates(directory="templates")
+
+# Указываем абсолютный путь к папке templates рядом с main.py
+BASE_DIR = Path(__file__).resolve().parent
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 DB_FILE = "database.db"
 
