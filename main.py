@@ -9,12 +9,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncio
 
 TOKEN = "8628464354:AAEQ0XKfv9OR-CR368dSaXq6tQsipn_Wy7w"
-
-raw_domain = os.getenv("BOTHOUSE_DOMAIN", "")
-if not raw_domain or "localhost" in raw_domain:
-    DOMAIN = "bot8628464354.bothost.tech"
-else:
-    DOMAIN = raw_domain.replace("http://", "").replace("https://", "")
+# Твой реальный домен с Bothost
+DOMAIN = "bot-1790032438-3286-prokudin95.bothost.tech"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -201,9 +197,8 @@ async def register(user_id: int, username: str = "Тренер", starter: str = 
         await db.commit()
     return RedirectResponse(url=f"/?user_id={user_id}", status_code=303)
 
-# Защита от ошибки 404: если откроют любой другой адрес, перенаправляем на главную
 @app.get("/{full_path:path}", response_class=HTMLResponse)
-async def catch_sall(full_path: str):
+async def catch_all(full_path: str):
     return RedirectResponse(url="/", status_code=303)
 
 if __name__ == "__main__":
