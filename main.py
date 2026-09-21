@@ -1,16 +1,17 @@
 import os
 import aiosqlite
-from fastapi import FastAPI, Request, Form, Depends
+from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 import uvicorn
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+import asyncio
 
-# Токен твоего бота (Bothost сам передает его через переменные окружения, либо можно указать здесь)
-TOKEN = os.getenv("BOT_TOKEN", "ТВОЙ_ТОКЕН_БОТА")
-DOMAIN = os.getenv("BOTHOUSE_DOMAIN", "http://localhost:8000") # Bothost автоматически заменит домен
+# Твой токен бота
+TOKEN = "8628464354:AAEQ0XKfv9OR-CR368dSaXq6tQsipn_Wy7w"
+DOMAIN = os.getenv("BOTHOUSE_DOMAIN", "http://localhost:8000") # Bothost автоматически заменит на твой домен
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -36,6 +37,8 @@ async def init_db():
 @app.on_event("startup")
 async def startup_event():
     await init_db()
+    # Запускаем телеграм-бота в фоновом режиме вместе с сервером
+    asyncio.create_task(dp.start_polling(bot))
 
 # Команда /start в боте
 @dp.message(Command("start"))
@@ -61,20 +64,14 @@ async def index(request: Request, user_id: int = 12345): # Для теста б�
 
 # Регистрация и выбор стартовика
 @app.post("/register")
-async def register(user_id: int = Form(...), username: int = Form(...), starter: str = Form(...)):
+async def register(user_id: int = Form(...), username: str = Form(...), starter: str = Form(...)):
     async with aiosqlite.connect(DB_FILE) as db:
         await db.execute(
             "INSERT OR REPLACE INTO users (user_id, username, starter, level, exp, hp) VALUES (?, ?, ?, 1, 0, 100)",
-            (user_id, "Тренер", starter)
+            (user_id, username, starter)
         )
         await db.commit()
     return RedirectResponse(url=f"/?user_id={user_id}", status_code=303)
-
-# Запуск бота в фоне при старте FastAPI
-@app.on_event("startup")
-async def on_startup():
-    import asyncio
-    asyncio.create_task(dp.start_polling(bot))
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
