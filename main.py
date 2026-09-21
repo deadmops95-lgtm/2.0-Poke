@@ -1,6 +1,6 @@
 import os
 import aiosqlite
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 import uvicorn
@@ -9,9 +9,8 @@ from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncio
 
-# Твой токен бота
 TOKEN = "8628464354:AAEQ0XKfv9OR-CR368dSaXq6tQsipn_Wy7w"
-DOMAIN = os.getenv("BOTHOUSE_DOMAIN", "http://localhost:8000") # Bothost автоматически заменит на твой домен
+DOMAIN = os.getenv("BOTHOUSE_DOMAIN", "http://localhost:8000")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -37,14 +36,11 @@ async def init_db():
 @app.on_event("startup")
 async def startup_event():
     await init_db()
-    # Запускаем телеграм-бота в фоновом режиме вместе с сервером
     asyncio.create_task(dp.start_polling(bot))
 
-# Команда /start в боте
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     builder = InlineKeyboardBuilder()
-    # Ссылка на Mini App, которая откроет наш сайт прямо в Telegram
     web_app_url = f"https://{DOMAIN}" if "http" not in DOMAIN else DOMAIN
     builder.button(text="🎮 Открыть игру (Mini App)", web_app=types.WebAppInfo(url=web_app_url))
     
@@ -53,18 +49,17 @@ async def cmd_start(message: types.Message):
         reply_markup=builder.as_markup()
     )
 
-# Главная страница Mini App (интерфейс игры)
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request, user_id: int = 12345): # Для теста берем заглушку user_id
+async def index(request: Request, user_id: int = 12345):
     async with aiosqlite.connect(DB_FILE) as db:
         async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
             user = await cursor.fetchone()
             
     return templates.TemplateResponse("index.html", {"request": request, "user": user})
 
-# Регистрация и выбор стартовика
-@app.post("/register")
-async def register(user_id: int = Form(...), username: str = Form(...), starter: str = Form(...)):
+# Регистрация через обычные параметры ссылки (без форм и python-multipart)
+@app.get("/register")
+async def register(user_id: int, username: str = "Тренер", starter: str = "Bulbasaur"):
     async with aiosqlite.connect(DB_FILE) as db:
         await db.execute(
             "INSERT OR REPLACE INTO users (user_id, username, starter, level, exp, hp) VALUES (?, ?, ?, 1, 0, 100)",
