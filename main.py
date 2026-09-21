@@ -10,7 +10,9 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncio
 
 TOKEN = "8628464354:AAEQ0XKfv9OR-CR368dSaXq6tQsipn_Wy7w"
-DOMAIN = os.getenv("BOTHOUSE_DOMAIN", "http://localhost:8000")
+# Получаем домен от Bothost и гарантируем, что он безопасный (https)
+RAW_DOMAIN = os.getenv("BOTHOUSE_DOMAIN", "localhost:8000")
+DOMAIN = RAW_DOMAIN.replace("http://", "").replace("https://", "")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -23,7 +25,7 @@ async def init_db():
     async with aiosqlite.connect(DB_FILE) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
+                user_id INTEGER INTEGER PRIMARY KEY,
                 username TEXT,
                 starter TEXT,
                 level INTEGER DEFAULT 1,
@@ -41,7 +43,8 @@ async def startup_event():
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     builder = InlineKeyboardBuilder()
-    web_app_url = f"https://{DOMAIN}" if "http" not in DOMAIN else DOMAIN
+    # Жестко прописываем https:// для Telegram
+    web_app_url = f"https://{DOMAIN}"
     builder.button(text="🎮 Открыть игру (Mini App)", web_app=types.WebAppInfo(url=web_app_url))
     
     await message.answer(
@@ -57,7 +60,6 @@ async def index(request: Request, user_id: int = 12345):
             
     return templates.TemplateResponse("index.html", {"request": request, "user": user})
 
-# Регистрация через обычные параметры ссылки (без форм и python-multipart)
 @app.get("/register")
 async def register(user_id: int, username: str = "Тренер", starter: str = "Bulbasaur"):
     async with aiosqlite.connect(DB_FILE) as db:
