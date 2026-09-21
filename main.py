@@ -9,7 +9,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncio
 
 TOKEN = "8628464354:AAEQ0XKfv9OR-CR368dSaXq6tQsipn_Wy7w"
-# Твой реальный домен с Bothost
 DOMAIN = "bot-1790032438-3286-prokudin95.bothost.tech"
 
 bot = Bot(token=TOKEN)
@@ -202,4 +201,5 @@ async def catch_all(full_path: str):
     return RedirectResponse(url="/", status_code=303)
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000)
+    # Запускаем на порту 3000, который ждет Bothost
+    uvicorn.run("main:app", host="0.0.0.0", port=3000)
