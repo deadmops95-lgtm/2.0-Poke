@@ -10,9 +10,14 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncio
 
 TOKEN = "8628464354:AAEQ0XKfv9OR-CR368dSaXq6tQsipn_Wy7w"
-# Получаем домен от Bothost и гарантируем, что он безопасный (https)
-RAW_DOMAIN = os.getenv("BOTHOUSE_DOMAIN", "localhost:8000")
-DOMAIN = RAW_DOMAIN.replace("http://", "").replace("https://", "")
+
+# Получаем домен от Bothost. Если переменная пустая, берем имя из самого хостинга или дефолтный шаблон
+raw_domain = os.getenv("BOTHOUSE_DOMAIN", "")
+if not raw_domain or "localhost" in raw_domain:
+    # Если Bothost не передал домен, соберём его на базе ID бота, чтобы точно была ссылка https
+    DOMAIN = "bot8628464354.bothost.tech" # Либо Bothost подставит правильный при следующем перезапуске
+else:
+    DOMAIN = raw_domain.replace("http://", "").replace("https://", "")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -25,7 +30,7 @@ async def init_db():
     async with aiosqlite.connect(DB_FILE) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER INTEGER PRIMARY KEY,
+                user_id INTEGER PRIMARY KEY,
                 username TEXT,
                 starter TEXT,
                 level INTEGER DEFAULT 1,
@@ -43,7 +48,6 @@ async def startup_event():
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     builder = InlineKeyboardBuilder()
-    # Жестко прописываем https:// для Telegram
     web_app_url = f"https://{DOMAIN}"
     builder.button(text="🎮 Открыть игру (Mini App)", web_app=types.WebAppInfo(url=web_app_url))
     
