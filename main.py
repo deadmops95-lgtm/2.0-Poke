@@ -24,17 +24,21 @@ DB_FILE = "database.db"
 
 async def init_db():
     async with aiosqlite.connect(DB_FILE) as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
-                username TEXT,
-                starter TEXT,
-                level INTEGER DEFAULT 1,
-                exp INTEGER DEFAULT 0,
-                hp INTEGER DEFAULT 100
-            )
-        """)
-        await db.commit()
+        async with db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'") as cursor:
+            table_exists = await cursor.fetchone()
+        
+        if not table_exists:
+            await db.execute("""
+                CREATE TABLE users (
+                    user_id INTEGER PRIMARY KEY,
+                    username TEXT,
+                    starter TEXT,
+                    level INTEGER DEFAULT 1,
+                    exp INTEGER DEFAULT 0,
+                    hp INTEGER DEFAULT 100
+                )
+            """)
+            await db.commit()
 
 @app.on_event("startup")
 async def startup_event():
@@ -52,7 +56,6 @@ async def cmd_start(message: types.Message):
         reply_markup=builder.as_markup()
     )
 
-# Красивый HTML-интерфейс прямо в коде
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="ru">
@@ -184,7 +187,6 @@ async def index(request: Request, user_id: int = 12345):
         async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
             user = await cursor.fetchone()
             
-    # Рендерим HTML прямо из переменной
     template = Template(HTML_TEMPLATE)
     rendered_html = template.render(request=request, user=user)
     return HTMLResponse(content=rendered_html)
@@ -192,12 +194,17 @@ async def index(request: Request, user_id: int = 12345):
 @app.get("/register")
 async def register(user_id: int, username: str = "Тренер", starter: str = "Bulbasaur"):
     async with aiosqlite.connect(DB_FILE) as db:
-        async with db.execute(
+        await db.execute(
             "INSERT OR REPLACE INTO users (user_id, username, starter, level, exp, hp) VALUES (?, ?, ?, 1, 0, 100)",
             (user_id, username, starter)
-        ):
-            await db.commit()
+        )
+        await db.commit()
     return RedirectResponse(url=f"/?user_id={user_id}", status_code=303)
+
+# Защита от ошибки 404: если откроют любой другой адрес, перенаправляем на главную
+@app.get("/{full_path:path}", response_class=HTMLResponse)
+async def catch_sall(full_path: str):
+    return RedirectResponse(url="/", status_code=303)
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
