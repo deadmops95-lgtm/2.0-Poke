@@ -5,26 +5,14 @@ import aiosqlite
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 import uvicorn
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
-import asyncio
-from contextlib import asynccontextmanager
+from aiogram import Bot
 
 TOKEN = "8628464354:AAEQ0XKfv9OR-CR368dSaXq6tQsipn_Wy7w"
 DOMAIN = "bot-1790034365-8732-prokudin95.bothost.tech"
 
 bot = Bot(token=TOKEN)
-dp = Dispatcher()
+app = FastAPI()
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    await init_db()
-    await bot.delete_webhook(drop_pending_updates=True)
-    asyncio.create_task(dp.start_polling(bot))
-    yield
-    await bot.session.close()
-
-app = FastAPI(lifespan=lifespan)
 DB_FILE = "database.db"
 
 POKEMON_DATA = {
@@ -97,12 +85,9 @@ async def init_db():
         """)
         await db.commit()
 
-# Команда /start без кнопки (кнопка теперь только через меню BotFather)
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    await message.answer(
-        "⚡ **Pokémon World MMORPG**\n\nДобро пожаловать в лигу тренеров!\nЧтобы начать приключение, нажмите кнопку **«Играть»** в меню слева внизу экрана."
-    )
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -209,7 +194,6 @@ HTML_TEMPLATE = """
                     </div>
                     {% endif %}
 
-                    <!-- Бонус / Ежедневная награда -->
                     <a href="/daily?user_id={{ user[0] }}&tab=profile" class="block w-full py-2 bg-gradient-to-r from-amber-500 to-orange-600 font-bold rounded-xl text-xs text-white shadow">
                         🎁 Забрать ежедневный бонус
                     </a>
@@ -579,7 +563,6 @@ async def battle(user_id: int, tab: str = "battle"):
                 if energy < 20:
                     battle_msg = "❌ Недостаточно энергии (⚡) для боя!"
                 else:
-                    # PvE может как дать опыт, так и наказать при низком уровне
                     success = random.random() < (0.6 + (lvl * 0.05))
                     energy -= 20
                     
@@ -600,7 +583,7 @@ async def battle(user_id: int, tab: str = "battle"):
                                 await db.execute("INSERT INTO collection (user_id, pokemon_name, rarity, is_shiny, level, hp) VALUES (?, ?, 'Редкий', 0, ?, ?)", (user_id, starter_name, lvl, new_hp))
                             else:
                                 battle_msg = f"🏆 Победа в PvE! Уровень вырос до {lvl}!"
-                                await db.execute("UPDATE users = users..., level = ?, exp = ?, energy = ?, coins = coins + 20 WHERE user_id = ?", (lvl, exp, energy, user_id))
+                                await db.execute("UPDATE users SET level = ?, exp = ?, energy = ?, coins = coins + 20 WHERE user_id = ?", (lvl, exp, energy, user_id))
                         else:
                             battle_msg = f"⚔️ Победа в PvE! (+35 XP, +20 🪙)."
                             await db.execute("UPDATE users SET exp = ?, energy = ?, coins = coins + 20 WHERE user_id = ?", (exp, energy, user_id))
@@ -612,14 +595,10 @@ async def battle(user_id: int, tab: str = "battle"):
 
 @app.get("/boss")
 async def boss(user_id: int, tab: str = "battle"):
-    battle_msg = ""
     async with aiosqlite.connect(DB_FILE) as db:
-        async with db.execute("Energy, level FROM users WHERE user_id = ?", (user_id,)) as cursor:
-            # упрощенный рейд босса
-            await db.execute("UPDATE users SET exp = exp + 80, coins = coins + 70, rating = rating + 30 WHERE user_id = ?", (user_id,))
-            await db.commit()
-            battle_msg = "👑 Победа над Боссом! (+80 XP, +70 🪙)"
-    return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&battle_msg={battle_msg}", status_code=303)
+        await db.execute("UPDATE users SET exp = exp + 80, coins = coins + 70, rating = rating + 30 WHERE user_id = ?", (user_id,))
+        await db.commit()
+    return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&battle_msg=👑 Победа над Боссом! (+80 XP, +70 🪙)", status_code=303)
 
 @app.get("/buy")
 async def buy(user_id: int, item: str, tab: str = "shop"):
