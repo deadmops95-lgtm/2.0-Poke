@@ -5,30 +5,15 @@ import aiosqlite
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 import uvicorn
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, types
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-import asyncio
-from contextlib import asynccontextmanager
 
 TOKEN = "8628464354:AAEQ0XKfv9OR-CR368dSaXq6tQsipn_Wy7w"
 DOMAIN = "bot-1790034365-8732-prokudin95.bothost.tech"
 
 bot = Bot(token=TOKEN)
-dp = Dispatcher()
-
-# Корректный современный lifespan для FastAPI без варнингов и крашей
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Запуск при старте
-    await bot.delete_webhook(drop_pending_updates=True)
-    asyncio.create_task(dp.start_polling(bot))
-    await init_db()
-    yield
-    # Действия при выключении (если нужны)
-    await bot.session.close()
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 DB_FILE = "database.db"
 
@@ -132,24 +117,6 @@ async def init_db():
 @app.on_event("startup")
 async def startup_event():
     await init_db()
-    await bot.delete_webhook(drop_pending_updates=True)
-    asyncio.create_task(dp.start_polling(bot))
-
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    args = message.text.split()
-    ref_id = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0
-
-    builder = InlineKeyboardBuilder()
-    app_url = f"https://{DOMAIN}"
-    if ref_id:
-        app_url += f"?ref={ref_id}"
-
-    builder.button(text="🎮 Играть в Pokémon MMORPG", web_app=types.WebAppInfo(url=app_url))
-    await message.answer(
-        "⚡ Твой ID и связь с разработчиком настроены!\n\nЖми кнопку ниже, чтобы зайти в игру:",
-        reply_markup=builder.as_markup()
-    )
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -250,7 +217,7 @@ HTML_TEMPLATE = """
                 </form>
             </div>
         {% else %}
-            <!-- Вкладка 1: Профиль и связь с разработчиком -->
+            <!-- Вкладка 1: Профиль и связь -->
             <div id="tab-profile" class="tab-content active space-y-3">
                 <div class="bg-slate-800/90 p-4 rounded-3xl card-glow text-center space-y-3">
                     <div class="inline-block p-2 bg-indigo-500/10 rounded-2xl border border-indigo-500/30">
@@ -288,10 +255,8 @@ HTML_TEMPLATE = """
                         </div>
                     </div>
 
-                    <!-- Связь с разработчиком -->
                     <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-700 text-xs text-left space-y-1">
                         <span class="font-bold text-indigo-400 block">💬 Написать разработчику</span>
-                        <p class="text-[10px] text-slate-400">Скопируй свой ID и отправь создателю для связи:</p>
                         <a href="https://t.me/Prokudin95" target="_blank" class="block w-full py-1.5 bg-indigo-600/40 hover:bg-indigo-600/60 border border-indigo-500 text-indigo-200 text-center rounded-lg font-bold">Написать @Prokudin95 ✉️</a>
                     </div>
                 </div>
@@ -334,7 +299,7 @@ HTML_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- Вкладка 3: Pokédex, Зал Славы и Коллекция -->
+            <!-- Вкладка 3: Pokédex и Коллекция -->
             <div id="tab-collection" class="tab-content space-y-3">
                 <div class="bg-slate-800/90 p-5 rounded-3xl card-glow space-y-3 text-center">
                     <h2 class="text-sm font-bold text-yellow-400">📖 Pokédex: Собрано уникальных: {{ pokedex_count }}/38</h2>
@@ -443,7 +408,7 @@ HTML_TEMPLATE = """
                         <a href="/buy?user_id={{ user[0] }}&item=masterball" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 font-bold rounded-lg text-white">5 ⭐</a>
                     </div>
 
-                    <!-- Админ-панель выдачи ресурсов -->
+                    <!-- Админ-панель -->
                     <div class="bg-slate-900/80 p-3 rounded-xl border border-indigo-500/50 space-y-2 text-left mt-4">
                         <span class="font-bold text-indigo-400 block">🛠️ Админ-Панель выдачи</span>
                         <form action="/admin_give" method="GET" class="space-y-2">
