@@ -380,21 +380,18 @@ HTML_TEMPLATE = """
             }
         } catch (e) {}
 
-        // Если в URL нет user_id, но Telegram передал реальный ID — перенаправляем
+        // Если в URL нет user_id, но Telegram передал реальный ID — перенаправляем на личный аккаунт
         if (!urlParams.has('user_id')) {
             if (tgUserId) {
                 window.location.replace(`/?user_id=${tgUserId}`);
             } else {
-                // Если открыли не в телеграме, даем тестовый ID, чтобы не было ошибки 404
-                window.location.replace(`/?user_id=777888999`);
+                document.body.innerHTML = '<div style="background:#090d16; color:#fff; padding:40px; text-align:center; font-family:sans-serif;"><h2 style="color:#facc15;">⚠️ Ошибка доступа</h2><p style="margin-top:10px; font-size:14px; color:#94a3b8;">Пожалуйста, открывайте игру через кнопку в официальном Telegram-боте!</p></div>';
             }
         }
 
         const inputId = document.getElementById('input_user_id');
         const inputName = document.getElementById('input_username');
         if (inputId && tgUserId) inputId.value = tgUserId;
-        else if (inputId) inputId.value = "777888999";
-        
         if (inputName && tgUserName) inputName.value = tgUserName;
 
         const activeTab = urlParams.get('tab');
@@ -485,7 +482,7 @@ async def index(request: Request, user_id: int = 12345, message: str = None, bat
 @app.get("/register")
 async def register(user_id: int, username: str = "Тренер", starter: str = "Bulbasaur"):
     if not user_id or user_id == 12345:
-        user_id = int(time.time())
+        return RedirectResponse(url="/", status_code=303)
     async with aiosqlite.connect(DB_FILE) as db:
         async with db.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,)) as cursor:
             exists = await cursor.fetchone()
