@@ -9,7 +9,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncio
 
 TOKEN = "8628464354:AAEQ0XKfv9OR-CR368dSaXq6tQsipn_Wy7w"
-# Твой новый актуальный домен с Bothost
 DOMAIN = "bot-1790034365-8732-prokudin95.bothost.tech"
 
 bot = Bot(token=TOKEN)
@@ -39,6 +38,8 @@ async def init_db():
 @app.on_event("startup")
 async def startup_event():
     await init_db()
+    # Принудительно сбрасываем вебхуки и старые соединения, чтобы убрать ошибку Conflict
+    await bot.delete_webhook(drop_pending_updates=True)
     asyncio.create_task(dp.start_polling(bot))
 
 @dp.message(Command("start"))
@@ -190,7 +191,7 @@ async def index(request: Request, user_id: int = 12345):
 @app.get("/register")
 async def register(user_id: int, username: str = "Тренер", starter: str = "Bulbasaur"):
     async with aiosqlite.connect(DB_FILE) as db:
-        await db.execute(
+        async with db.execute(
             "INSERT OR REPLACE INTO users (user_id, username, starter, level, exp, hp) VALUES (?, ?, ?, 1, 0, 100)",
             (user_id, username, starter)
         )
