@@ -5,16 +5,13 @@ import aiosqlite
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 import uvicorn
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
+from aiogram import Bot
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-import asyncio
 
 TOKEN = "8628464354:AAEQ0XKfv9OR-CR368dSaXq6tQsipn_Wy7w"
 DOMAIN = "bot-1790034365-8732-prokudin95.bothost.tech"
 
 bot = Bot(token=TOKEN)
-dp = Dispatcher()
 app = FastAPI()
 
 DB_FILE = "database.db"
@@ -119,24 +116,6 @@ async def init_db():
 @app.on_event("startup")
 async def startup_event():
     await init_db()
-    await bot.delete_webhook(drop_pending_updates=True)
-    asyncio.create_task(dp.start_polling(bot))
-
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    args = message.text.split()
-    ref_id = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0
-
-    builder = InlineKeyboardBuilder()
-    app_url = f"https://{DOMAIN}"
-    if ref_id:
-        app_url += f"?ref={ref_id}"
-
-    builder.button(text="🎮 Играть в Pokémon MMORPG", web_app=types.WebAppInfo(url=app_url))
-    await message.answer(
-        "⚡ Добро пожаловать в мир покемонов!\n\nЖми кнопку ниже, чтобы открыть игру:",
-        reply_markup=builder.as_markup()
-    )
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -315,7 +294,7 @@ HTML_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- Вкладка 3: Pokédex и Коллекция (Выбор боевого покемона) -->
+            <!-- Вкладка 3: Pokédex и Коллекция -->
             <div id="tab-collection" class="tab-content space-y-3">
                 <div class="bg-slate-800/90 p-5 rounded-3xl card-glow space-y-3 text-center">
                     <h2 class="text-sm font-bold text-yellow-400">📖 Pokédex: Собрано: {{ pokedex_count }}/38</h2>
