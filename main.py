@@ -9,13 +9,26 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncio
+from contextlib import asynccontextmanager
 
 TOKEN = "8628464354:AAEQ0XKfv9OR-CR368dSaXq6tQsipn_Wy7w"
 DOMAIN = "bot-1790034365-8732-prokudin95.bothost.tech"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
-app = FastAPI()
+
+# Корректный современный lifespan для FastAPI без варнингов и крашей
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Запуск при старте
+    await bot.delete_webhook(drop_pending_updates=True)
+    asyncio.create_task(dp.start_polling(bot))
+    await init_db()
+    yield
+    # Действия при выключении (если нужны)
+    await bot.session.close()
+
+app = FastAPI(lifespan=lifespan)
 
 DB_FILE = "database.db"
 
