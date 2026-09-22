@@ -5,13 +5,16 @@ import aiosqlite
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 import uvicorn
-from aiogram import Bot
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+import asyncio
 
 TOKEN = "8628464354:AAEQ0XKfv9OR-CR368dSaXq6tQsipn_Wy7w"
 DOMAIN = "bot-1790034365-8732-prokudin95.bothost.tech"
 
 bot = Bot(token=TOKEN)
+dp = Dispatcher()
 app = FastAPI()
 
 DB_FILE = "database.db"
@@ -116,6 +119,24 @@ async def init_db():
 @app.on_event("startup")
 async def startup_event():
     await init_db()
+    await bot.delete_webhook(drop_pending_updates=True)
+    asyncio.create_task(dp.start_polling(bot))
+
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message):
+    args = message.text.split()
+    ref_id = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0
+
+    builder = InlineKeyboardBuilder()
+    app_url = f"https://{DOMAIN}"
+    if ref_id:
+        app_url += f"?ref={ref_id}"
+
+    builder.button(text="🎮 Играть в Pokémon MMORPG", web_app=types.WebAppInfo(url=app_url))
+    await message.answer(
+        "⚡ Добро пожаловать в мир покемонов!\n\nЖми кнопку ниже, чтобы открыть игру:",
+        reply_markup=builder.as_markup()
+    )
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -143,7 +164,7 @@ HTML_TEMPLATE = """
             <div class="w-8 h-8 bg-indigo-600/30 rounded-full flex items-center justify-center font-bold text-indigo-300">⚡</div>
             <div>
                 <h1 class="font-bold text-indigo-400 text-sm" id="tg-username">Тренер</h1>
-                <span class="text-[10px] text-slate-400">ID: <strong class="text-yellow-300" id="header-user-id">--</strong></span>
+                <span class="text-[10px] text-slate-400">Клан: <strong class="text-indigo-300">{{ user[15] if user else 'Без клана' }}</strong></span>
             </div>
         </div>
         <div class="flex items-center gap-1.5">
@@ -216,19 +237,15 @@ HTML_TEMPLATE = """
                 </form>
             </div>
         {% else %}
-            <!-- Вкладка 1: Профиль и связь -->
+            <!-- Вкладка 1: Профиль и Боевой покемон -->
             <div id="tab-profile" class="tab-content space-y-3">
                 <div class="bg-slate-800/90 p-4 rounded-3xl card-glow text-center space-y-3">
                     <div class="inline-block p-2 bg-indigo-500/10 rounded-2xl border border-indigo-500/30">
                         <img id="starter-img" src="" class="w-20 h-20 mx-auto pixel-art">
                     </div>
-                    <h2 class="text-sm font-bold text-indigo-200">Стартер: <span class="text-yellow-400">{{ user[2] }}</span> (Ур. {{ user[3] }})</h2>
+                    <h2 class="text-sm font-bold text-indigo-200">Боевой покемон: <span class="text-yellow-400">{{ user[2] }}</span> (Ур. {{ user[3] }})</h2>
                     
                     <div class="bg-slate-900/60 p-2.5 rounded-2xl space-y-2 text-left text-xs">
-                        <div class="flex justify-between text-[11px]">
-                            <span class="text-slate-400">Ваш Telegram ID:</span>
-                            <span class="font-bold text-yellow-300" id="profile-user-id">{{ user[0] }}</span>
-                        </div>
                         <div class="flex justify-between text-[11px]">
                             <span class="text-slate-400">Здоровье (HP):</span>
                             <span class="font-bold text-rose-400">{{ user[5] }}/{{ user[6] }} HP</span>
@@ -255,7 +272,7 @@ HTML_TEMPLATE = """
                     </div>
 
                     <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-700 text-xs text-left space-y-1">
-                        <span class="font-bold text-indigo-400 block">💬 Написать разработчику</span>
+                        <span class="font-bold text-indigo-400 block">💬 Разработчик</span>
                         <a href="https://t.me/Prokudin95" target="_blank" class="block w-full py-1.5 bg-indigo-600/40 hover:bg-indigo-600/60 border border-indigo-500 text-indigo-200 text-center rounded-lg font-bold">Написать @Prokudin95 ✉️</a>
                     </div>
                 </div>
@@ -298,10 +315,10 @@ HTML_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- Вкладка 3: Pokédex и Коллекция -->
+            <!-- Вкладка 3: Pokédex и Коллекция (Выбор боевого покемона) -->
             <div id="tab-collection" class="tab-content space-y-3">
                 <div class="bg-slate-800/90 p-5 rounded-3xl card-glow space-y-3 text-center">
-                    <h2 class="text-sm font-bold text-yellow-400">📖 Pokédex: Собрано уникальных: {{ pokedex_count }}/38</h2>
+                    <h2 class="text-sm font-bold text-yellow-400">📖 Pokédex: Собрано: {{ pokedex_count }}/38</h2>
                     
                     <h2 class="text-sm font-bold text-indigo-300 pt-1">🏆 Зал Славы (Топ Тренеров)</h2>
                     <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-700 space-y-1 text-xs text-left max-h-24 overflow-y-auto">
@@ -313,15 +330,8 @@ HTML_TEMPLATE = """
                         {% endfor %}
                     </div>
 
-                    <h2 class="text-sm font-bold text-indigo-300 pt-1">📦 Моя Коллекция</h2>
+                    <h2 class="text-sm font-bold text-indigo-300 pt-1">📦 Моя Коллекция (Выбери бойца)</h2>
                     <div class="grid grid-cols-2 gap-2 text-left max-h-32 overflow-y-auto pr-1">
-                        <div class="bg-slate-900/60 p-2 rounded-xl border border-slate-700 flex items-center gap-2 text-xs">
-                            <img src="" id="starter-box-img" class="w-8 h-8 pixel-art">
-                            <div>
-                                <span class="font-bold text-yellow-400 block">{{ user[2] }}</span>
-                                <span class="text-[10px] text-slate-400">Ур. {{ user[3] }}</span>
-                            </div>
-                        </div>
                         {% for p in collection %}
                         <div class="p-2 rounded-xl text-xs flex items-center justify-between {% if p[4] == 1 %}shiny-card{% else %}bg-slate-900/60 border border-slate-700{% endif %}">
                             <div class="flex items-center gap-2">
@@ -332,7 +342,7 @@ HTML_TEMPLATE = """
                                 </div>
                             </div>
                             <div class="flex flex-col gap-1">
-                                <a href="/trade?user_id={{ user[0] }}&poke_id={{ p[0] }}&tab=collection" class="px-1.5 py-0.5 bg-purple-600/40 text-purple-200 rounded text-[9px] font-bold text-center">Обмен</a>
+                                <a href="/set_active?user_id={{ user[0] }}&poke_id={{ p[0] }}&tab=collection" class="px-1.5 py-0.5 bg-emerald-600/60 text-white rounded text-[9px] font-bold text-center">В бой!</a>
                                 <a href="/sell?user_id={{ user[0] }}&poke_id={{ p[0] }}&tab=collection" class="px-1.5 py-0.5 bg-rose-600/40 text-rose-200 rounded text-[9px] font-bold text-center">Продать</a>
                             </div>
                         </div>
@@ -358,7 +368,7 @@ HTML_TEMPLATE = """
                     <div class="grid grid-cols-2 gap-2 text-xs">
                         <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-700 space-y-2">
                             <span class="font-bold text-rose-400 block">🌲 PvE Бой</span>
-                            <p class="text-[10px] text-slate-400">Учет стихий покемонов</p>
+                            <p class="text-[10px] text-slate-400">Качай активного покемона</p>
                             <a href="/battle?user_id={{ user[0] }}&tab=battle" class="block w-full py-1.5 bg-rose-600 hover:bg-rose-700 font-bold rounded-lg text-white">В бой!</a>
                         </div>
                         <div class="bg-slate-900/60 p-3 rounded-xl border border-indigo-500/50 space-y-2">
@@ -454,8 +464,6 @@ HTML_TEMPLATE = """
             const u = tg.initDataUnsafe.user;
             userId = u.id;
             document.getElementById('tg-username').innerText = u.first_name;
-            const headerIdEl = document.getElementById('header-user-id');
-            if (headerIdEl) headerIdEl.innerText = userId;
         }
 
         const urlParams = new URLSearchParams(window.location.search);
@@ -468,7 +476,6 @@ HTML_TEMPLATE = """
             window.location.href = `/?user_id=${userId}` + (refParam ? `&ref=${refParam}` : '');
         }
 
-        // Автоматическое переключение на сохраненную вкладку
         const activeTab = urlParams.get('tab');
         if (activeTab) {
             const btnMap = { 'profile': 0, 'map': 1, 'collection': 2, 'battle': 3, 'shop': 4 };
@@ -500,9 +507,7 @@ HTML_TEMPLATE = """
         if (starterName && POKEMON_IDS[starterName]) {
             const spriteUrl = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${POKEMON_IDS[starterName]}.png`;
             const sImg = document.getElementById('starter-img');
-            const sbImg = document.getElementById('starter-box-img');
             if(sImg) sImg.src = spriteUrl;
-            if(sbImg) sbImg.src = spriteUrl;
         }
 
         function switchTab(tabName, btn) {
@@ -533,8 +538,6 @@ async def index(request: Request, user_id: int = 12345, message: str = None, bat
         leaderboard = []
         pokedex_count = 0
         can_claim = False
-        bot_info = await bot.get_me()
-        bot_username = bot_info.username
 
         if user:
             current_time = time.time()
@@ -559,7 +562,7 @@ async def index(request: Request, user_id: int = 12345, message: str = None, bat
     rendered_html = template.render(
         request=request, user=user, collection=collection, leaderboard=leaderboard,
         pokedex_count=pokedex_count, message=message, battle_msg=battle_msg, 
-        evo_msg=evo_msg, trade_msg=trade_msg, can_claim=can_claim, bot_username=bot_username
+        evo_msg=evo_msg, trade_msg=trade_msg, can_claim=can_claim
     )
     return HTMLResponse(content=rendered_html)
 
@@ -582,6 +585,21 @@ async def register(user_id: int, username: str = "Тренер", starter: str = 
             await db.commit()
 
     return RedirectResponse(url=f"/?user_id={user_id}&tab=profile", status_code=303)
+
+@app.get("/set_active")
+async def set_active(user_id: int, poke_id: int, tab: str = "collection"):
+    msg = ""
+    async with aiosqlite.connect(DB_FILE) as db:
+        async with db.execute("SELECT pokemon_name FROM collection WHERE id = ? AND user_id = ?", (poke_id, user_id)) as cursor:
+            poke = await cursor.fetchone()
+            if poke:
+                p_name = poke[0]
+                await db.execute("UPDATE users SET starter = ? WHERE user_id = ?", (p_name, user_id))
+                await db.commit()
+                msg = f"⚡ Боевой покемон успешно изменен на {p_name}!"
+            else:
+                msg = "Ошибка: покемон не найден."
+    return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&message={msg}", status_code=303)
 
 @app.get("/admin_give")
 async def admin_give(admin_id: int, target_id: int, add_coins: int = 100, add_balls: int = 5, tab: str = "shop"):
