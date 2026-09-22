@@ -249,11 +249,6 @@ HTML_TEMPLATE = """
                             <a href="/join_clan?user_id={{ user[0] }}&clan=Team Valor&tab=profile" class="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded font-bold text-[10px]">Valor</a>
                         </div>
                     </div>
-
-                    <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-700 text-xs text-left space-y-1">
-                        <span class="font-bold text-indigo-400 block">💬 Разработчик</span>
-                        <a href="https://t.me/Prokudin95" target="_blank" class="block w-full py-1.5 bg-indigo-600/40 hover:bg-indigo-600/60 border border-indigo-500 text-indigo-200 text-center rounded-lg font-bold">Написать @Prokudin95 ✉️</a>
-                    </div>
                 </div>
             </div>
 
@@ -395,30 +390,6 @@ HTML_TEMPLATE = """
                         </div>
                         <a href="/buy?user_id={{ user[0] }}&item=masterball&tab=shop" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 font-bold rounded-lg text-white">5 ⭐</a>
                     </div>
-
-                    <!-- Админ-панель -->
-                    <div class="bg-slate-900/80 p-3 rounded-xl border border-indigo-500/50 space-y-2 text-left mt-4">
-                        <span class="font-bold text-indigo-400 block">🛠️ Админ-Панель выдачи</span>
-                        <form action="/admin_give" method="GET" class="space-y-2">
-                            <input type="hidden" name="admin_id" value="{{ user[0] }}">
-                            <input type="hidden" name="tab" value="shop">
-                            <div>
-                                <label class="text-[10px] text-slate-400">ID игрока:</label>
-                                <input type="number" name="target_id" placeholder="ID игрока" class="w-full bg-slate-800 p-1.5 rounded text-xs text-white border border-slate-700" required>
-                            </div>
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label class="text-[10px] text-slate-400">Монеты 🪙:</label>
-                                    <input type="number" name="add_coins" value="100" class="w-full bg-slate-800 p-1.5 rounded text-xs text-white border border-slate-700">
-                                </div>
-                                <div>
-                                    <label class="text-[10px] text-slate-400">Покеболы 🔴:</label>
-                                    <input type="number" name="add_balls" value="5" class="w-full bg-slate-800 p-1.5 rounded text-xs text-white border border-slate-700">
-                                </div>
-                            </div>
-                            <button type="submit" class="w-full py-1.5 bg-indigo-600 hover:bg-indigo-700 font-bold rounded-lg text-white">Выдать ресурсы</button>
-                        </form>
-                    </div>
                 </div>
             </div>
         {% endif %}
@@ -435,25 +406,29 @@ HTML_TEMPLATE = """
     {% endif %}
 
     <script>
-        const tg = window.Telegram.WebApp;
-        tg.expand();
-        
-        let userId = 12345;
-        if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
-            const u = tg.initDataUnsafe.user;
-            userId = u.id;
-            document.getElementById('tg-username').innerText = u.first_name;
-        }
-
         const urlParams = new URLSearchParams(window.location.search);
         const refParam = urlParams.get('ref');
         if (refParam && document.getElementById('input_ref')) {
             document.getElementById('input_ref').value = refParam;
         }
 
-        // Если открыли с телефона без параметра user_id, подставляем ID из Telegram WebApp автоматически
-        if (!urlParams.has('user_id') && userId !== 12345) {
-            window.location.href = `/?user_id=${userId}` + (refParam ? `&ref=${refParam}` : '');
+        let tgUserId = 12345;
+        try {
+            if (window.Telegram && window.Telegram.WebApp) {
+                const tg = window.Telegram.WebApp;
+                tg.expand();
+                if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                    tgUserId = tg.initDataUnsafe.user.id;
+                    const userNameEl = document.getElementById('tg-username');
+                    if (userNameEl) userNameEl.innerText = tg.initDataUnsafe.user.first_name;
+                }
+            }
+        } catch (e) {
+            console.log("WebApp error:", e);
+        }
+
+        if (!urlParams.has('user_id') && tgUserId !== 12345) {
+            window.location.replace(`/?user_id=${tgUserId}` + (refParam ? `&ref=${refParam}` : ''));
         }
 
         const activeTab = urlParams.get('tab');
@@ -581,13 +556,6 @@ async def set_active(user_id: int, poke_id: int, tab: str = "collection"):
                 msg = "Ошибка: покемон не найден."
     return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&message={msg}", status_code=303)
 
-@app.get("/admin_give")
-async def admin_give(admin_id: int, target_id: int, add_coins: int = 100, add_balls: int = 5, tab: str = "shop"):
-    async with aiosqlite.connect(DB_FILE) as db:
-        await db.execute("UPDATE users SET coins = coins + ?, pokeballs = pokeballs + ? WHERE user_id = ?", (add_coins, add_balls, target_id))
-        await db.commit()
-    return RedirectResponse(url=f"/?user_id={admin_id}&tab={tab}&message=🛠️ Успешно выдано игроку {target_id}: +{add_coins} 🪙, +{add_balls} 🔴!", status_code=303)
-
 @app.get("/sell")
 async def sell(user_id: int, poke_id: int, tab: str = "collection"):
     msg = ""
@@ -609,40 +577,6 @@ async def join_clan(user_id: int, clan: str, tab: str = "profile"):
         await db.execute("UPDATE users SET clan_name = ? WHERE user_id = ?", (clan, user_id))
         await db.commit()
     return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&message=🛡️ Клан изменен на {clan}!", status_code=303)
-
-@app.get("/daily")
-async def daily(user_id: int, tab: str = "profile"):
-    current_time = time.time()
-    async with aiosqlite.connect(DB_FILE) as db:
-        async with db.execute("SELECT last_daily FROM users WHERE user_id = ?", (user_id,)) as cursor:
-            row = await cursor.fetchone()
-            if row and (current_time - row[0] >= 86400):
-                await db.execute("UPDATE users SET pokeballs = pokeballs + 2, coins = coins + 50, last_daily = ? WHERE user_id = ?", (current_time, user_id))
-                await db.commit()
-                msg = "🎁 Ежедневный бонус получен: +2 Poké Balls и +50 🪙!"
-            else:
-                msg = "⚠️ Награда уже получена! Приходите через 24 часа."
-                
-    return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&message={msg}", status_code=303)
-
-@app.get("/heal")
-async def heal(user_id: int, tab: str = "profile"):
-    msg = ""
-    async with aiosqlite.connect(DB_FILE) as db:
-        async with db.execute("SELECT hp, max_hp, potions FROM users WHERE user_id = ?", (user_id,)) as cursor:
-            user = await cursor.fetchone()
-            if user:
-                hp, max_hp, potions = user[0], user[1], user[2]
-                if potions > 0 and hp < max_hp:
-                    new_hp = min(max_hp, hp + 50)
-                    await db.execute("UPDATE users SET hp = ?, potions = potions - 1 WHERE user_id = ?", (new_hp, user_id))
-                    await db.commit()
-                    msg = "🧪 Зелье использовано! Здоровье восстановлено."
-                elif hp >= max_hp:
-                    msg = "⚠️ У покемона полный запас здоровья!"
-                else:
-                    msg = "❌ У вас закончились лечебные зелья!"
-    return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&message={msg}", status_code=303)
 
 @app.get("/explore")
 async def explore(user_id: int, loc: str, tab: str = "map"):
@@ -762,25 +696,6 @@ async def boss(user_id: int, tab: str = "battle"):
         await db.commit()
         
     return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&battle_msg={battle_msg}", status_code=303)
-
-@app.get("/trade")
-async def trade(user_id: int, poke_id: int, tab: str = "collection"):
-    trade_msg = ""
-    async with aiosqlite.connect(DB_FILE) as db:
-        async with db.execute("SELECT pokemon_name FROM collection WHERE id = ? AND user_id = ?", (poke_id, user_id)) as cursor:
-            poke = await cursor.fetchone()
-            if poke:
-                p_name = poke[0]
-                trade_pool = ["Pikachu", "Cyndaquil", "Treecko", "Torchic", "Mudkip", "Snorlax", "Ralts", "Gengar"]
-                new_poke = random.choice([p for p in trade_pool if p != p_name])
-                
-                await db.execute("UPDATE collection SET pokemon_name = ? WHERE id = ?", (new_poke, poke_id))
-                await db.commit()
-                trade_msg = f"🤝 Обмен успешен! Вы получили: {new_poke}!"
-            else:
-                trade_msg = "Ошибка обмена: покемон не найден."
-                
-    return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&trade_msg={trade_msg}", status_code=303)
 
 @app.get("/buy")
 async def buy(user_id: int, item: str, tab: str = "shop"):
