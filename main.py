@@ -176,6 +176,7 @@ HTML_TEMPLATE = """
                 <p class="text-xs text-slate-300">Выберите стартового Pokémon:</p>
                 
                 <form action="/register" method="GET" class="space-y-3">
+                    <!-- Сюда JavaScript подставит реальный ID игрока из Telegram -->
                     <input type="hidden" name="user_id" id="input_user_id" value="12345">
                     <input type="hidden" name="username" id="input_username" value="Trainer">
 
@@ -402,21 +403,32 @@ HTML_TEMPLATE = """
 
     <script>
         const urlParams = new URLSearchParams(window.location.search);
-        let tgUserId = 12345;
+        let tgUserId = null;
+        let tgUserName = "Тренер";
+
         try {
             if (window.Telegram && window.Telegram.WebApp) {
                 const tg = window.Telegram.WebApp;
                 tg.expand();
                 if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
                     tgUserId = tg.initDataUnsafe.user.id;
-                    document.getElementById('tg-username').innerText = tg.initDataUnsafe.user.first_name;
+                    tgUserName = tg.initDataUnsafe.user.first_name || "Тренер";
+                    const nameEl = document.getElementById('tg-username');
+                    if (nameEl) nameEl.innerText = tgUserName;
                 }
             }
         } catch (e) {}
 
-        if (!urlParams.has('user_id') && tgUserId !== 12345) {
+        // Если в URL нет user_id, но мы получили реальный ID из Telegram — автоматически перенаправляем игрока на его личный аккаунт
+        if (!urlParams.has('user_id') && tgUserId) {
             window.location.replace(`/?user_id=${tgUserId}`);
         }
+
+        // Автоматически подставляем данные в форму регистрации для новых игроков
+        const inputId = document.getElementById('input_user_id');
+        const inputName = document.getElementById('input_username');
+        if (inputId && tgUserId) inputId.value = tgUserId;
+        if (inputName && tgUserName) inputName.value = tgUserName;
 
         const activeTab = urlParams.get('tab');
         if (activeTab) {
@@ -491,7 +503,6 @@ async def index(request: Request, user_id: int = 12345, message: str = None, bat
             async with db.execute("SELECT user_id, username, rating FROM users ORDER BY rating DESC LIMIT 5") as cursor:
                 leaderboard = await cursor.fetchall()
 
-            # Считаем рейтинг кланов (сумма кубков участников каждого клана)
             async with db.execute("SELECT clan_name, SUM(rating) as total_rating FROM users GROUP BY clan_name ORDER BY total_rating DESC") as cursor:
                 clan_stats = await cursor.fetchall()
             
@@ -511,6 +522,11 @@ async def register(user_id: int, username: str = "Тренер", starter: str = 
             await db.execute(
                 "INSERT INTO users (user_id, username, starter, level, exp, hp, max_hp, pokeballs, coins, rating, clan_name) VALUES (?, ?, ?, 1, 0, 100, 100, 5, 150, 1000, 'Без клана')",
                 (user_id, username, starter)
+            )
+            # Добавляем выбранного стартового покемона в коллекцию игрока
+            await db.execute(
+                "INSERT INTO collection (user_id, pokemon_name, rarity, is_shiny, level, hp) VALUES (?, ?, 'Обычный', 0, 1, 50)",
+                (user_id, starter)
             )
             await db.commit()
     return RedirectResponse(url=f"/?user_id={user_id}&tab=profile", status_code=303)
@@ -626,8 +642,8 @@ async def buy(user_id: int, item: str, tab: str = "shop"):
 @app.get("/sell")
 async def sell(user_id: int, poke_id: int, tab: str = "collection"):
     async with aiosqlite.connect(DB_FILE) as db:
-        await db.execute("DELETE FROM collection WHERE id = ?", (poke_id,))
-        await db.execute("UPDATE users SET coins = coins + 40 WHERE user_id = ?", (user_id,))
+        async with db.execute("DELETE FROM collection WHERE id = ?", (poke_id,))
+        async with db.execute("UPDATE users SET coins = coins + 40 WHERE user_id = ?", (user_id,))
         await db.commit()
     return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&message=💰 Покемон продан за 40 🪙!", status_code=303)
 
