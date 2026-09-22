@@ -5,27 +5,14 @@ import aiosqlite
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 import uvicorn
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-import asyncio
-from contextlib import asynccontextmanager
+from aiogram import Bot
 
 TOKEN = "8628464354:AAEQ0XKfv9OR-CR368dSaXq6tQsipn_Wy7w"
 DOMAIN = "bot-1790034365-8732-prokudin95.bothost.tech"
 
 bot = Bot(token=TOKEN)
-dp = Dispatcher()
+app = FastAPI()
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    await init_db()
-    await bot.delete_webhook(drop_pending_updates=True)
-    asyncio.create_task(dp.start_polling(bot))
-    yield
-    await bot.session.close()
-
-app = FastAPI(lifespan=lifespan)
 DB_FILE = "database.db"
 
 POKEMON_DATA = {
@@ -125,15 +112,9 @@ async def init_db():
         """)
         await db.commit()
 
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    builder = InlineKeyboardBuilder()
-    app_url = f"https://{DOMAIN}"
-    builder.button(text="🎮 Играть в Pokémon MMORPG", web_app=types.WebAppInfo(url=app_url))
-    await message.answer(
-        "⚡ Добро пожаловать в мир покемонов!\n\nЖми кнопку ниже, чтобы открыть игру:",
-        reply_markup=builder.as_markup()
-    )
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -209,7 +190,7 @@ HTML_TEMPLATE = """
                 </form>
             </div>
         {% else %}
-            <!-- Вкладка 1: Профиль и выбор клана -->
+            <!-- Профиль -->
             <div id="tab-profile" class="tab-content space-y-3">
                 <div class="bg-slate-800/90 p-4 rounded-3xl card-glow text-center space-y-3">
                     <div class="inline-block p-2 bg-indigo-500/10 rounded-2xl border border-indigo-500/30">
@@ -225,13 +206,6 @@ HTML_TEMPLATE = """
                         <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
                             <div class="bg-rose-500 h-full transition-all duration-500" style="width: {{ (user[5] / user[6]) * 100 }}%;"></div>
                         </div>
-                        <div class="flex justify-between text-[11px] pt-1">
-                            <span class="text-slate-400">Опыт до след. уровня:</span>
-                            <span class="font-bold text-emerald-400">{{ user[4] }}/100 XP</span>
-                        </div>
-                        <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                            <div class="bg-emerald-500 h-full transition-all duration-500" style="width: {{ user[4] }}%;"></div>
-                        </div>
                     </div>
 
                     {% if message %}
@@ -240,7 +214,6 @@ HTML_TEMPLATE = """
                     </div>
                     {% endif %}
 
-                    <!-- Выбор и рейтинг кланов -->
                     <div class="bg-indigo-950/50 p-3 rounded-2xl border border-indigo-500/40 text-xs text-left space-y-2">
                         <span class="font-bold text-indigo-300 block">🛡️ Выбор клана:</span>
                         <div class="grid grid-cols-3 gap-1">
@@ -264,30 +237,30 @@ HTML_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- Вкладка 2: Карта мира -->
+            <!-- Карта -->
             <div id="tab-map" class="tab-content space-y-3">
                 <div class="bg-slate-800/90 p-5 rounded-3xl card-glow space-y-3 text-center">
-                    <h2 class="text-sm font-bold text-indigo-300">🗺️ Карта Мира (Эндгейм)</h2>
+                    <h2 class="text-sm font-bold text-indigo-300">🗺️ Карта Мира</h2>
                     {% if map_msg %}<p class="text-xs text-yellow-300 font-bold">{{ map_msg }}</p>{% endif %}
                     <div class="space-y-2 text-xs">
                         <div class="flex justify-between items-center bg-slate-900/60 p-3 rounded-xl border border-slate-700">
                             <div>
                                 <span class="font-bold text-emerald-400 block">🌲 Лесная зона</span>
-                                <span class="text-[10px] text-slate-400">Поиск обычных и редких покемонов</span>
+                                <span class="text-[10px] text-slate-400">Поиск покемонов</span>
                             </div>
                             <a href="/explore?user_id={{ user[0] }}&loc=forest&tab=map" class="px-3 py-1.5 bg-emerald-600/30 border border-emerald-500 text-emerald-300 rounded-lg font-bold">Идти (-1 🔴)</a>
                         </div>
                         <div class="flex justify-between items-center bg-slate-900/60 p-3 rounded-xl border border-slate-700">
                             <div>
-                                <span class="font-bold text-amber-400 block">⛰️ Пещеры & Водоемы</span>
-                                <span class="text-[10px] text-slate-400">Легендарные покемоны & Shiny шанс</span>
+                                <span class="font-bold text-amber-400 block">⛰️ Пещеры</span>
+                                <span class="text-[10px] text-slate-400">Легендарные покемоны</span>
                             </div>
                             <a href="/explore?user_id={{ user[0] }}&loc=cave&tab=map" class="px-3 py-1.5 bg-amber-600/30 border border-amber-500 text-amber-300 rounded-lg font-bold">Идти (-1 🔴)</a>
                         </div>
                         <div class="flex justify-between items-center bg-slate-900/60 p-3 rounded-xl border border-purple-500/50">
                             <div>
                                 <span class="font-bold text-purple-300 block">✨ Ультра-Портал</span>
-                                <span class="text-[10px] text-slate-400">Высокий шанс Shiny (Стоит 2 🔴)</span>
+                                <span class="text-[10px] text-slate-400">Шанс Shiny</span>
                             </div>
                             <a href="/explore?user_id={{ user[0] }}&loc=portal&tab=map" class="px-3 py-1.5 bg-purple-600/30 border border-purple-500 text-purple-300 rounded-lg font-bold">Портал</a>
                         </div>
@@ -295,23 +268,11 @@ HTML_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- Вкладка 3: Коллекция и Pokédex -->
+            <!-- Коллекция -->
             <div id="tab-collection" class="tab-content space-y-3">
                 <div class="bg-slate-800/90 p-5 rounded-3xl card-glow space-y-3 text-center">
-                    <h2 class="text-sm font-bold text-yellow-400">📖 Pokédex: Собрано уникальных: {{ pokedex_count }}/38</h2>
-                    
-                    <h2 class="text-sm font-bold text-indigo-300 pt-1">🏆 Зал Славы (Топ Тренеров)</h2>
-                    <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-700 space-y-1 text-xs text-left max-h-24 overflow-y-auto">
-                        {% for top in leaderboard %}
-                        <div class="flex justify-between items-center border-b border-slate-800 pb-1">
-                            <span class="font-bold text-indigo-300">{{ loop.index }}. @{{ top[1] or 'Тренер' }}</span>
-                            <span class="text-yellow-400 font-bold">🏆 {{ top[2] }} кубков</span>
-                        </div>
-                        {% endfor %}
-                    </div>
-
-                    <h2 class="text-sm font-bold text-indigo-300 pt-1">📦 Моя Коллекция (Выбери бойца)</h2>
-                    <div class="grid grid-cols-2 gap-2 text-left max-h-32 overflow-y-auto pr-1">
+                    <h2 class="text-sm font-bold text-yellow-400">📦 Коллекция (Собрано: {{ pokedex_count }}/38)</h2>
+                    <div class="grid grid-cols-2 gap-2 text-left max-h-40 overflow-y-auto">
                         {% for p in collection %}
                         <div class="p-2 rounded-xl text-xs flex items-center justify-between {% if p[4] == 1 %}shiny-card{% else %}bg-slate-900/60 border border-slate-700{% endif %}">
                             <div class="flex items-center gap-2">
@@ -322,7 +283,7 @@ HTML_TEMPLATE = """
                                 </div>
                             </div>
                             <div class="flex flex-col gap-1">
-                                <a href="/set_active?user_id={{ user[0] }}&poke_id={{ p[0] }}&tab=collection" class="px-1.5 py-0.5 bg-emerald-600/60 text-white rounded text-[9px] font-bold text-center">В бой!</a>
+                                <a href="/set_active?user_id={{ user[0] }}&poke_id={{ p[0] }}&tab=collection" class="px-1.5 py-0.5 bg-emerald-600/60 text-white rounded text-[9px] font-bold text-center">В бой</a>
                                 <a href="/sell?user_id={{ user[0] }}&poke_id={{ p[0] }}&tab=collection" class="px-1.5 py-0.5 bg-rose-600/40 text-rose-200 rounded text-[9px] font-bold text-center">Продать</a>
                             </div>
                         </div>
@@ -331,60 +292,24 @@ HTML_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- Вкладка 4: Арены -->
+            <!-- Арена -->
             <div id="tab-battle" class="tab-content space-y-3">
                 <div class="bg-slate-800/90 p-5 rounded-3xl card-glow text-center space-y-3">
-                    <h2 class="text-sm font-bold text-rose-400">⚔️ Тактические Арены</h2>
-                    
-                    {% if battle_msg %}
-                    <div class="p-3 bg-rose-950/60 border border-rose-500/40 rounded-xl text-center text-xs">
-                        <p class="font-bold text-yellow-300">{{ battle_msg }}</p>
-                    </div>
-                    {% endif %}
-
+                    <h2 class="text-sm font-bold text-rose-400">⚔️ Арены</h2>
+                    {% if battle_msg %}<p class="text-xs text-yellow-300 font-bold">{{ battle_msg }}</p>{% endif %}
                     <div class="grid grid-cols-2 gap-2 text-xs">
-                        <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-700 space-y-2">
-                            <span class="font-bold text-rose-400 block">🌲 PvE Бой</span>
-                            <p class="text-[10px] text-slate-400">Качай активного покемона</p>
-                            <a href="/battle?user_id={{ user[0] }}&tab=battle" class="block w-full py-1.5 bg-rose-600 hover:bg-rose-700 font-bold rounded-lg text-white">В бой!</a>
-                        </div>
-                        <div class="bg-slate-900/60 p-3 rounded-xl border border-indigo-500/50 space-y-2">
-                            <span class="font-bold text-indigo-400 block">🏆 PvP (Живые игроки)</span>
-                            <p class="text-[10px] text-slate-400">Бой с реальным соперником</p>
-                            <a href="/pvp_live?user_id={{ user[0] }}&tab=battle" class="block w-full py-1.5 bg-indigo-600 hover:bg-indigo-700 font-bold rounded-lg text-white">Найти бой!</a>
-                        </div>
+                        <a href="/battle?user_id={{ user[0] }}&tab=battle" class="py-2 bg-rose-600 text-white font-bold rounded-xl block">🌲 PvE Бой</a>
+                        <a href="/pvp_live?user_id={{ user[0] }}&tab=battle" class="py-2 bg-indigo-600 text-white font-bold rounded-xl block">🏆 PvP (Игроки)</a>
                     </div>
-
-                    <div class="bg-amber-950/40 p-3 rounded-xl border border-amber-500/40 text-xs text-left flex justify-between items-center">
-                        <div>
-                            <span class="font-bold text-amber-400 block">👑 Легендарный Босс</span>
-                            <span class="text-[10px] text-slate-400">Награда: +100 XP и +100 🪙</span>
-                        </div>
-                        <a href="/boss?user_id={{ user[0] }}&tab=battle" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg">Вызов</a>
-                    </div>
+                    <a href="/boss?user_id={{ user[0] }}&tab=battle" class="block w-full py-2 bg-amber-600 text-white font-bold rounded-xl text-xs">👑 Босс</a>
                 </div>
             </div>
 
-            <!-- Вкладка 5: Магазин -->
+            <!-- Магазин -->
             <div id="tab-shop" class="tab-content space-y-3">
-                <div class="bg-slate-800/90 p-5 rounded-3xl card-glow space-y-3 text-xs">
-                    <h2 class="text-sm font-bold text-amber-400 text-center">🛒 Магазин Лиги</h2>
-                    
-                    <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-700 flex justify-between items-center">
-                        <div>
-                            <span class="font-bold text-slate-200 block">🔴 Poké Ball</span>
-                            <span class="text-[10px] text-slate-400">В наличии: {{ user[7] }} шт.</span>
-                        </div>
-                        <a href="/buy?user_id={{ user[0] }}&item=pokeball&tab=shop" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 font-bold rounded-lg text-white">50 🪙</a>
-                    </div>
-
-                    <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-700 flex justify-between items-center">
-                        <div>
-                            <span class="font-bold text-rose-300 block">🧪 Зелье лечения</span>
-                            <span class="text-[10px] text-slate-400">В наличии: {{ user[9] }} шт.</span>
-                        </div>
-                        <a href="/buy?user_id={{ user[0] }}&item=potion&tab=shop" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 font-bold rounded-lg text-white">30 🪙</a>
-                    </div>
+                <div class="bg-slate-800/90 p-5 rounded-3xl card-glow space-y-3 text-center">
+                    <h2 class="text-sm font-bold text-amber-400">🛒 Магазин</h2>
+                    <a href="/buy?user_id={{ user[0] }}&item=pokeball&tab=shop" class="block w-full py-2 bg-amber-600 text-white font-bold rounded-xl text-xs">Купить Poké Ball (50 🪙)</a>
                 </div>
             </div>
         {% endif %}
@@ -438,21 +363,8 @@ HTML_TEMPLATE = """
 
         const starterName = "{{ user[2] if user else '' }}";
         const POKEMON_IDS = {
-            "Bulbasaur": 1, "Ivysaur": 2, "Venusaur": 3,
-            "Charmander": 4, "Charmeleon": 5, "Charizard": 6,
-            "Squirtle": 7, "Wartortle": 8, "Blastoise": 9,
-            "Pikachu": 25, "Raichu": 26, "Pidgey": 16, "Zubat": 41,
-            "Diglett": 50, "Geodude": 74, "Mewtwo": 150, "Rattata": 19,
-            "Snorlax": 143, "Gengar": 94,
-            "Chikorita": 152, "Bayleef": 153, "Meganium": 154,
-            "Cyndaquil": 155, "Quilava": 156, "Typhlosion": 157,
-            "Totodile": 158, "Croconaw": 159, "Feraligatr": 160,
-            "Togepi": 175, "Togetic": 176, "Mareep": 179, "Flaaffy": 180, "Ampharos": 181,
-            "Tyranitar": 248, "Lugia": 249,
-            "Treecko": 252, "Grovyle": 253, "Sceptile": 254,
-            "Torchic": 255, "Combusken": 256, "Blaziken": 257,
-            "Mudkip": 258, "Marshtomp": 259, "Swampert": 260,
-            "Ralts": 280, "Kirlia": 281, "Gardevoir": 282, "Rayquaza": 384
+            "Bulbasaur": 1, "Charmander": 4, "Squirtle": 7, "Pikachu": 25,
+            "Mewtwo": 150, "Rayquaza": 384, "Snorlax": 143, "Lugia": 249, "Chikorita": 152
         };
 
         if (starterName && POKEMON_IDS[starterName]) {
@@ -479,8 +391,24 @@ from jinja2 import Template
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request, user_id: int = 12345, message: str = None, battle_msg: str = None, map_msg: str = None):
     async with aiosqlite.connect(DB_FILE) as db:
-        async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
-            user = await cursor.fetchone()
+        if user_id != 12345:
+            async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
+                user = await cursor.fetchone()
+            if not user:
+                await db.execute(
+                    "INSERT INTO users (user_id, username, starter, level, exp, hp, max_hp, pokeballs, coins, rating, clan_name) VALUES (?, 'Тренер', 'Bulbasaur', 1, 0, 100, 100, 5, 150, 1000, 'Без клана')",
+                    (user_id,)
+                )
+                await db.execute(
+                    "INSERT INTO collection (user_id, pokemon_name, rarity, is_shiny, level, hp) VALUES (?, 'Bulbasaur', 'Обычный', 0, 1, 50)",
+                    (user_id,)
+                )
+                await db.commit()
+                async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
+                    user = await cursor.fetchone()
+        else:
+            async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
+                user = await cursor.fetchone()
             
         collection = []
         pokedex_count = 0
@@ -510,29 +438,12 @@ async def index(request: Request, user_id: int = 12345, message: str = None, bat
         battle_msg=battle_msg, map_msg=map_msg
     ))
 
-@app.get("/register")
-async def register(user_id: int, username: str = "Тренер", starter: str = "Bulbasaur"):
-    async with aiosqlite.connect(DB_FILE) as db:
-        async with db.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,)) as cursor:
-            exists = await cursor.fetchone()
-        if not exists:
-            await db.execute(
-                "INSERT INTO users (user_id, username, starter, level, exp, hp, max_hp, pokeballs, coins, rating, clan_name) VALUES (?, ?, ?, 1, 0, 100, 100, 5, 150, 1000, 'Без клана')",
-                (user_id, username, starter)
-            )
-            await db.execute(
-                "INSERT INTO collection (user_id, pokemon_name, rarity, is_shiny, level, hp) VALUES (?, ?, 'Обычный', 0, 1, 50)",
-                (user_id, starter)
-            )
-            await db.commit()
-    return RedirectResponse(url=f"/?user_id={user_id}&tab=profile", status_code=303)
-
 @app.get("/join_clan")
 async def join_clan(user_id: int, clan: str, tab: str = "profile"):
     async with aiosqlite.connect(DB_FILE) as db:
         await db.execute("UPDATE users SET clan_name = ? WHERE user_id = ?", (clan, user_id))
         await db.commit()
-    return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&message=🛡️ Вы успешно вступили в клан {clan}!", status_code=303)
+    return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&message=🛡️ Вступили в {clan}!", status_code=303)
 
 @app.get("/set_active")
 async def set_active(user_id: int, poke_id: int, tab: str = "collection"):
@@ -542,7 +453,7 @@ async def set_active(user_id: int, poke_id: int, tab: str = "collection"):
             if poke:
                 await db.execute("UPDATE users SET starter = ? WHERE user_id = ?", (poke[0], user_id))
                 await db.commit()
-    return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&message=⚡ Боевой покемон изменен!", status_code=303)
+    return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&message=⚡ Покемон изменен!", status_code=303)
 
 @app.get("/explore")
 async def explore(user_id: int, loc: str, tab: str = "map"):
@@ -552,78 +463,50 @@ async def explore(user_id: int, loc: str, tab: str = "map"):
         async with db.execute("SELECT pokeballs FROM users WHERE user_id = ?", (user_id,)) as cursor:
             row = await cursor.fetchone()
             if row and row[0] >= cost:
-                if loc == "forest":
-                    pool = ["Pikachu", "Pidgey", "Bulbasaur", "Chikorita", "Snorlax"]
-                elif loc == "cave":
-                    pool = ["Mewtwo", "Rayquaza", "Lugia", "Tyranitar"]
-                else:
-                    pool = ["Mewtwo", "Rayquaza", "Lugia", "Gardevoir"]
-                
+                pool = ["Pikachu", "Mewtwo", "Rayquaza", "Bulbasaur", "Snorlax"]
                 chosen = random.choice(pool)
                 is_shiny = 1 if random.random() < (0.3 if loc == "portal" else 0.1) else 0
                 await db.execute("UPDATE users SET pokeballs = pokeballs - ? WHERE user_id = ?", (cost, user_id))
                 await db.execute("INSERT INTO collection (user_id, pokemon_name, rarity, is_shiny, level, hp) VALUES (?, ?, 'Редкий', ?, 1, 50)", (user_id, chosen, is_shiny))
                 await db.commit()
-                shiny_text = "✨ SHINY " if is_shiny else ""
-                map_msg = f"🎉 Пойман покемон: {shiny_text}{chosen}!"
+                map_msg = f"🎉 Пойман: {'✨ SHINY ' if is_shiny else ''}{chosen}!"
             else:
-                map_msg = "❌ Недостаточно Poké Balls!"
+                map_msg = "❌ Мало Poké Balls!"
     return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&map_msg={map_msg}", status_code=303)
 
 @app.get("/pvp_live")
 async def pvp_live(user_id: int, tab: str = "battle"):
     battle_msg = ""
     async with aiosqlite.connect(DB_FILE) as db:
-        async with db.execute("SELECT user_id, username, rating, starter FROM users WHERE user_id != ? ORDER BY RANDOM() LIMIT 1", (user_id,)) as cursor:
+        async with db.execute("SELECT user_id, username, starter FROM users WHERE user_id != ? ORDER BY RANDOM() LIMIT 1", (user_id,)) as cursor:
             opponent = await cursor.fetchone()
-        
         if not opponent:
-            battle_msg = "👥 Пока нет других реальных игроков для PvP боя."
+            battle_msg = "👥 Нет соперников для PvP."
         else:
-            opp_id, opp_name, opp_rating, opp_poke = opponent
+            opp_id, opp_name, opp_poke = opponent
             win = random.random() < 0.5
             if win:
                 await db.execute("UPDATE users SET rating = rating + 25, coins = coins + 50 WHERE user_id = ?", (user_id,))
-                await db.execute("UPDATE users SET rating = MAX(0, rating - 15) WHERE user_id = ?", (opp_id,))
-                battle_msg = f"🏆 Победа над игроком @{opp_name or 'Тренер'} ({opp_poke})! (+25 🏆)"
+                battle_msg = f"🏆 Победа над @{opp_name or 'Тренер'}! (+25 🏆)"
             else:
                 await db.execute("UPDATE users SET rating = MAX(0, rating - 15) WHERE user_id = ?", (user_id,))
-                await db.execute("UPDATE users SET rating = rating + 25 WHERE user_id = ?", (opp_id,))
-                battle_msg = f"💥 Поражение от игрока @{opp_name or 'Тренер'} ({opp_poke})! (-15 🏆)"
+                battle_msg = f"💥 Поражение от @{opp_name or 'Тренер'}! (-15 🏆)"
             await db.commit()
-
     return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&battle_msg={battle_msg}", status_code=303)
 
 @app.get("/battle")
 async def battle(user_id: int, tab: str = "battle"):
-    battle_msg = ""
     async with aiosqlite.connect(DB_FILE) as db:
-        async with db.execute("SELECT exp, level FROM users WHERE user_id = ?", (user_id,)) as cursor:
-            user = await cursor.fetchone()
-            if user:
-                exp, lvl = user[0] + 35, user[1]
-                if exp >= 100:
-                    lvl += 1
-                    exp = 0
-                    battle_msg = f"🏆 Победа в PvE! Уровень вырос до {lvl}!"
-                else:
-                    battle_msg = f"⚔️ Победа в PvE! Получено +35 XP и +30 🪙."
-                await db.execute("UPDATE users SET exp = ?, level = ?, coins = coins + 30 WHERE user_id = ?", (exp, lvl, user_id))
-                await db.commit()
-    return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&battle_msg={battle_msg}", status_code=303)
+        await db.execute("UPDATE users SET exp = exp + 35, coins = coins + 30 WHERE user_id = ?", (user_id,))
+        await db.commit()
+    return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&battle_msg=⚔️ Победа в PvE! (+35 XP)", status_code=303)
 
 @app.get("/boss")
 async def boss(user_id: int, tab: str = "battle"):
-    battle_msg = ""
-    win = random.random() < 0.5
     async with aiosqlite.connect(DB_FILE) as db:
-        if win:
-            await db.execute("UPDATE users SET exp = exp + 100, coins = coins + 100, rating = rating + 50 WHERE user_id = ?", (user_id,))
-            battle_msg = "👑 ТРИУМФ! Победа над Боссом (+100 XP, +100 🪙)!"
-        else:
-            battle_msg = "💀 Босс разгромил вас!"
+        await db.execute("UPDATE users SET exp = exp + 100, coins = coins + 100, rating = rating + 50 WHERE user_id = ?", (user_id,))
         await db.commit()
-    return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&battle_msg={battle_msg}", status_code=303)
+    return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&battle_msg=👑 Победа над Боссом!", status_code=303)
 
 @app.get("/buy")
 async def buy(user_id: int, item: str, tab: str = "shop"):
@@ -641,12 +524,12 @@ async def sell(user_id: int, poke_id: int, tab: str = "collection"):
         await db.execute("DELETE FROM collection WHERE id = ?", (poke_id,))
         await db.execute("UPDATE users SET coins = coins + 40 WHERE user_id = ?", (user_id,))
         await db.commit()
-    return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&message=💰 Покемон продан за 40 🪙!", status_code=303)
+    return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&message=💰 Продано за 40 🪙!", status_code=303)
 
-# Универсальный перехватчик для защиты от любых 404 ошибок
 @app.get("/{full_path:path}", response_class=HTMLResponse)
 async def catch_all(full_path: str):
     return RedirectResponse(url="/", status_code=303)
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=3000)
+    port = int(os.environ.get("PORT", 3000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
