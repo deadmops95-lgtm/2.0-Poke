@@ -451,6 +451,7 @@ HTML_TEMPLATE = """
             document.getElementById('input_ref').value = refParam;
         }
 
+        // Если открыли с телефона без параметра user_id, подставляем ID из Telegram WebApp автоматически
         if (!urlParams.has('user_id') && userId !== 12345) {
             window.location.href = `/?user_id=${userId}` + (refParam ? `&ref=${refParam}` : '');
         }
