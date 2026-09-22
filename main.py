@@ -70,13 +70,6 @@ POKEMON_DATA = {
     "Rayquaza": {"id": 384, "next": None, "evo_lvl": 99, "type": "Dragon"}
 }
 
-TYPE_ADVANTAGES = {
-    "Fire": {"Grass": 1.5, "Water": 0.5, "Fire": 0.5},
-    "Water": {"Fire": 1.5, "Grass": 0.5, "Water": 0.5},
-    "Grass": {"Water": 1.5, "Fire": 0.5, "Grass": 0.5},
-    "Electric": {"Water": 1.5, "Electric": 0.5, "Grass": 0.5},
-}
-
 async def init_db():
     async with aiosqlite.connect(DB_FILE) as db:
         await db.execute("""
@@ -215,12 +208,16 @@ HTML_TEMPLATE = """
                     {% endif %}
 
                     <div class="bg-indigo-950/50 p-3 rounded-2xl border border-indigo-500/40 text-xs text-left space-y-2">
-                        <span class="font-bold text-indigo-300 block">🛡️ Выбор клана:</span>
+                        <span class="font-bold text-indigo-300 block">🛡️ Ваш клан: <strong class="text-yellow-400">{{ user[15] }}</strong></span>
+                        {% if user[15] == 'Без клана' %}
                         <div class="grid grid-cols-3 gap-1">
                             <a href="/join_clan?user_id={{ user[0] }}&clan=Team Rocket&tab=profile" class="py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-[10px] text-center">Rocket</a>
                             <a href="/join_clan?user_id={{ user[0] }}&clan=Team Mystic&tab=profile" class="py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-[10px] text-center">Mystic</a>
                             <a href="/join_clan?user_id={{ user[0] }}&clan=Team Valor&tab=profile" class="py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-[10px] text-center">Valor</a>
                         </div>
+                        {% else %}
+                        <p class="text-[10px] text-slate-400">Вы уже состоите в клане. Смена недоступна!</p>
+                        {% endif %}
                         
                         <div class="pt-2 border-t border-indigo-900">
                             <span class="font-bold text-slate-300 block mb-1">👑 Рейтинг кланов:</span>
@@ -343,6 +340,7 @@ HTML_TEMPLATE = """
             }
         } catch (e) {}
 
+        // Автоматически перенаправляем на личный ID игрока, если его нет в строке
         if (!urlParams.has('user_id') && tgUserId) {
             window.location.replace(`/?user_id=${tgUserId}`);
         }
@@ -391,24 +389,14 @@ from jinja2 import Template
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request, user_id: int = 12345, message: str = None, battle_msg: str = None, map_msg: str = None):
     async with aiosqlite.connect(DB_FILE) as db:
+        user = None
+        # Если передан реальный ID (не дефолтный), ищем в базе
         if user_id != 12345:
             async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
                 user = await cursor.fetchone()
-            if not user:
-                await db.execute(
-                    "INSERT INTO users (user_id, username, starter, level, exp, hp, max_hp, pokeballs, coins, rating, clan_name) VALUES (?, 'Тренер', 'Bulbasaur', 1, 0, 100, 100, 5, 150, 1000, 'Без клана')",
-                    (user_id,)
-                )
-                await db.execute(
-                    "INSERT INTO collection (user_id, pokemon_name, rarity, is_shiny, level, hp) VALUES (?, 'Bulbasaur', 'Обычный', 0, 1, 50)",
-                    (user_id,)
-                )
-                await db.commit()
-                async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
-                    user = await cursor.fetchone()
-        else:
-            async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
-                user = await cursor.fetchone()
+        
+        # Если пользователя нет в базе — переменная user останется None, 
+        # и шаблон автоматически покажет экран выбора стартового покемона!
             
         collection = []
         pokedex_count = 0
@@ -438,12 +426,36 @@ async def index(request: Request, user_id: int = 12345, message: str = None, bat
         battle_msg=battle_msg, map_msg=map_msg
     ))
 
+@app.get("/register")
+async def register(user_id: int, username: str = "Тренер", starter: str = "Bulbasaur"):
+    async with aiosqlite.connect(DB_FILE) as db:
+        async with db.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            exists = await cursor.fetchone()
+        if not exists:
+            await db.execute(
+                "INSERT INTO users (user_id, username, starter, level, exp, hp, max_hp, pokeballs, coins, rating, clan_name) VALUES (?, ?, ?, 1, 0, 100, 100, 5, 150, 1000, 'Без клана')",
+                (user_id, username, starter)
+            )
+            await db.execute(
+                "INSERT INTO collection (user_id, pokemon_name, rarity, is_shiny, level, hp) VALUES (?, ?, 'Обычный', 0, 1, 50)",
+                (user_id, starter)
+            )
+            await db.commit()
+    return RedirectResponse(url=f"/?user_id={user_id}&tab=profile", status_code=303)
+
 @app.get("/join_clan")
 async def join_clan(user_id: int, clan: str, tab: str = "profile"):
     async with aiosqlite.connect(DB_FILE) as db:
-        await db.execute("UPDATE users SET clan_name = ? WHERE user_id = ?", (clan, user_id))
-        await db.commit()
-    return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&message=🛡️ Вступили в {clan}!", status_code=303)
+        # Проверяем, состоял ли уже игрок в клане
+        async with db.execute("SELECT clan_name FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row and row[0] == 'Без клана':
+                await db.execute("UPDATE users SET clan_name = ? WHERE user_id = ?", (clan, user_id))
+                await db.commit()
+                msg = f"🛡️ Вы успешно вступили в клан {clan}!"
+            else:
+                msg = "⚠️ Вы уже состоите в клане!"
+    return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&message={msg}", status_code=303)
 
 @app.get("/set_active")
 async def set_active(user_id: int, poke_id: int, tab: str = "collection"):
