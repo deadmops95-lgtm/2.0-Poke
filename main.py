@@ -176,7 +176,6 @@ HTML_TEMPLATE = """
                 <p class="text-xs text-slate-300">Выберите стартового Pokémon:</p>
                 
                 <form action="/register" method="GET" class="space-y-3">
-                    <!-- Сюда JavaScript подставит реальный ID игрока из Telegram -->
                     <input type="hidden" name="user_id" id="input_user_id" value="12345">
                     <input type="hidden" name="username" id="input_username" value="Trainer">
 
@@ -419,12 +418,10 @@ HTML_TEMPLATE = """
             }
         } catch (e) {}
 
-        // Если в URL нет user_id, но мы получили реальный ID из Telegram — автоматически перенаправляем игрока на его личный аккаунт
         if (!urlParams.has('user_id') && tgUserId) {
             window.location.replace(`/?user_id=${tgUserId}`);
         }
 
-        // Автоматически подставляем данные в форму регистрации для новых игроков
         const inputId = document.getElementById('input_user_id');
         const inputName = document.getElementById('input_username');
         if (inputId && tgUserId) inputId.value = tgUserId;
@@ -523,7 +520,6 @@ async def register(user_id: int, username: str = "Тренер", starter: str = 
                 "INSERT INTO users (user_id, username, starter, level, exp, hp, max_hp, pokeballs, coins, rating, clan_name) VALUES (?, ?, ?, 1, 0, 100, 100, 5, 150, 1000, 'Без клана')",
                 (user_id, username, starter)
             )
-            # Добавляем выбранного стартового покемона в коллекцию игрока
             await db.execute(
                 "INSERT INTO collection (user_id, pokemon_name, rarity, is_shiny, level, hp) VALUES (?, ?, 'Обычный', 0, 1, 50)",
                 (user_id, starter)
@@ -642,11 +638,12 @@ async def buy(user_id: int, item: str, tab: str = "shop"):
 @app.get("/sell")
 async def sell(user_id: int, poke_id: int, tab: str = "collection"):
     async with aiosqlite.connect(DB_FILE) as db:
-        async with db.execute("DELETE FROM collection WHERE id = ?", (poke_id,))
-        async with db.execute("UPDATE users SET coins = coins + 40 WHERE user_id = ?", (user_id,))
+        await db.execute("DELETE FROM collection WHERE id = ?", (poke_id,))
+        await db.execute("UPDATE users SET coins = coins + 40 WHERE user_id = ?", (user_id,))
         await db.commit()
     return RedirectResponse(url=f"/?user_id={user_id}&tab={tab}&message=💰 Покемон продан за 40 🪙!", status_code=303)
 
+# Универсальный перехватчик для защиты от любых 404 ошибок
 @app.get("/{full_path:path}", response_class=HTMLResponse)
 async def catch_all(full_path: str):
     return RedirectResponse(url="/", status_code=303)
